@@ -41,16 +41,29 @@ export const getMessagesByRoomId = async (roomId: string) => {
 // Bonus 1: Atomic Read-Once
 export const readAndBurnMessages = async (uid1: string, uid2: string) => {
 	const key = getChatKey(uid1, uid2);
+	
+	console.log(`[ATOMIC-READ-BURN] Starting atomic operation for key: ${key}`);
+	console.log(`[ATOMIC-READ-BURN] UIDs: ${uid1} <-> ${uid2}`);
 
 	const pipeline = redis.multi();
 	pipeline.lrange(key, 0, -1);
 	pipeline.del(key);
 
+	console.log(`[ATOMIC-READ-BURN] Executing Redis pipeline (LRANGE + DEL in single transaction)...`);
 	const results = await pipeline.exec();
-	if (!results) return [];
+	
+	if (!results) {
+		console.log(`[ATOMIC-READ-BURN] ERROR: Pipeline returned no results`);
+		return [];
+	}
 
 	const messages = results[0]?.[1] as string[] | undefined;
-	logPulse("GHOST", `Messages read and burned for ${key}`);
+	console.log(`[ATOMIC-READ-BURN] Pipeline executed successfully`);
+	console.log(`[ATOMIC-READ-BURN] Messages read: ${messages?.length || 0}`);
+	console.log(`[ATOMIC-READ-BURN] Key deleted: ${results[1]?.[1] === 1 ? 'YES' : 'NO'}`);
+	console.log(`[ATOMIC-READ-BURN] Atomic operation completed - no race conditions possible`);
+	
+	logPulse("GHOST", `Messages read and burned for ${key} (${messages?.length || 0} messages)`);
 
 	return messages ? messages.map((m) => JSON.parse(m)) : [];
 };

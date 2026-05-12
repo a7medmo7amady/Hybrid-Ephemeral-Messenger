@@ -169,12 +169,31 @@ export const GhostChat = ({ user }: { user: any }) => {
 			setOnlineUsers(filtered);
 		};
 
+		const handleReadOnceResult = (data: { messages: Message[]; burned: boolean }) => {
+			console.log("[READ-ONCE-RESULT] Messages burned:", data.burned);
+			console.log("[READ-ONCE-RESULT] Messages received:", data.messages.length);
+			if (data.burned) {
+				console.log("[READ-ONCE-RESULT] SUCCESS: Messages atomically read and burned");
+			}
+		};
+
+		const handleMessagesBurned = (data: { roomId: string }) => {
+			console.log("[MESSAGES-BURNED] Other user burned messages in room:", data.roomId);
+			console.log("[MESSAGES-BURNED] Clearing local messages for this room");
+			if (currentRoomRef.current === data.roomId) {
+				setMessages([]);
+				messagesRef.current.set(data.roomId, []);
+			}
+		};
+
 		socket.on("connect", handleConnect);
 		socket.on("new-message", handleNewMessage);
 		socket.on("chat-history", handleChatHistory);
 		socket.on("wipe-signal", handleWipeSignal);
 		socket.on("chat-expired", handleChatExpired);
 		socket.on("online-users", handleOnlineUsers);
+		socket.on("read-once-result", handleReadOnceResult);
+		socket.on("messages-burned", handleMessagesBurned);
 
 		// Join global room initially if not connected yet
 		if (socket.connected) {
@@ -188,12 +207,26 @@ export const GhostChat = ({ user }: { user: any }) => {
 			socket.off("wipe-signal", handleWipeSignal);
 			socket.off("chat-expired", handleChatExpired);
 			socket.off("online-users", handleOnlineUsers);
+			socket.off("read-once-result", handleReadOnceResult);
+			socket.off("messages-burned", handleMessagesBurned);
 		};
 	}, [socket, user.uid]);
 
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages]);
+		
+		// Auto-trigger atomic read-once when messages are rendered in 1-on-1 chat
+		if (selectedUser && messages.length > 0 && socket && currentRoomRef.current !== "global") {
+			const roomId = currentRoomRef.current;
+			console.log(`[AUTO-BURN] Messages rendered (${messages.length}), triggering atomic read-once for room: ${roomId}`);
+			
+			// Delay slightly to ensure rendering is complete
+			setTimeout(() => {
+				console.log(`[AUTO-BURN] Emitting read-once-messages event`);
+				socket.emit("read-once-messages", { roomId });
+			}, 500);
+		}
+	}, [messages, selectedUser, socket]);
 
 	const handleSelectUser = (selectedUser: OnlineUser) => {
 		setSelectedUser(selectedUser);

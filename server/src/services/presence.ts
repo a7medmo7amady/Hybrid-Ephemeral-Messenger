@@ -29,8 +29,15 @@ export const setUserOnline = async (
 
 export const setUserOffline = async (uid: string) => {
 	const key = `presence:${uid}`;
-	await redis.del(key);
-	logPulse("SOCKET", `User offline: ${uid}`);
+	console.log(`[BURN-ON-DISCONNECT] Wiping presence for user: ${uid}`);
+	console.log(`[BURN-ON-DISCONNECT] Deleting Redis key: ${key}`);
+	
+	const deleted = await redis.del(key);
+	
+	console.log(`[BURN-ON-DISCONNECT] Key deletion result: ${deleted === 1 ? 'SUCCESS (key existed)' : 'NO-OP (key not found)'}`);
+	console.log(`[BURN-ON-DISCONNECT] User presence instantly removed from Redis`);
+	
+	logPulse("SOCKET", `User offline (burn-on-disconnect): ${uid}`);
 };
 
 export const getOnlineUsers = async (): Promise<OnlineUser[]> => {
