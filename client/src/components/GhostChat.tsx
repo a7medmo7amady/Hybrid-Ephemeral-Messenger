@@ -1,6 +1,6 @@
 "use client";
 
-import { Send, X } from "lucide-react";
+import { Send, X, Eye } from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSocket } from "@/context/SocketContext";
@@ -28,6 +28,7 @@ export const GhostChat = ({ user }: { user: any }) => {
 	const [selectedUser, setSelectedUser] = useState<OnlineUser | null>(null);
 	const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
 	const [chatExpired, setChatExpired] = useState(false);
+	const [burnedMessageTimestamps, setBurnedMessageTimestamps] = useState<Set<number>>(new Set());
 	const chatEndRef = useRef<HTMLDivElement>(null);
 	const messagesRef = useRef<Map<string, Message[]>>(new Map()); // Store messages per room
 	const currentRoomRef = useRef<string>("global");
@@ -214,19 +215,7 @@ export const GhostChat = ({ user }: { user: any }) => {
 
 	useEffect(() => {
 		chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-		
-		// Auto-trigger atomic read-once when messages are rendered in 1-on-1 chat
-		if (selectedUser && messages.length > 0 && socket && currentRoomRef.current !== "global") {
-			const roomId = currentRoomRef.current;
-			console.log(`[AUTO-BURN] Messages rendered (${messages.length}), triggering atomic read-once for room: ${roomId}`);
-			
-			// Delay slightly to ensure rendering is complete
-			setTimeout(() => {
-				console.log(`[AUTO-BURN] Emitting read-once-messages event`);
-				socket.emit("read-once-messages", { roomId });
-			}, 500);
-		}
-	}, [messages, selectedUser, socket]);
+	}, [messages]);
 
 	const handleSelectUser = (selectedUser: OnlineUser) => {
 		setSelectedUser(selectedUser);
@@ -285,6 +274,23 @@ export const GhostChat = ({ user }: { user: any }) => {
 		setInput("");
 	};
 
+	const handleBurnMessage = (messageTimestamp: number) => {
+		console.log(`[BURN-MESSAGE] Burning message with timestamp: ${messageTimestamp}`);
+		
+		// Mark message as burned locally
+		setBurnedMessageTimestamps(prev => new Set([...prev, messageTimestamp]));
+		
+		// Remove from display
+		setMessages(prev => prev.filter(msg => msg.timestamp !== messageTimestamp));
+		
+		// Also update the cache for this room
+		const roomKey = currentRoomRef.current;
+		const roomMessages = messagesRef.current.get(roomKey) || [];
+		messagesRef.current.set(roomKey, roomMessages.filter(msg => msg.timestamp !== messageTimestamp));
+		
+		console.log(`[BURN-MESSAGE] Message burned from local state`);
+	};
+
 	const chatTitle = selectedUser
 		? `Direct Message: ${selectedUser.displayName}`
 		: "Ghost Chat Console (Global)";
@@ -328,10 +334,14 @@ export const GhostChat = ({ user }: { user: any }) => {
 				)}
 				{getUniqueMessages(messages).map((msg, i) => {
 					const isMyMessage = msg.from === user.uid;
+					const isBurned = burnedMessageTimestamps.has(msg.timestamp);
+					
+					if (isBurned) return null;
+					
 					return (
 						<div key={i} className={`flex gap-2 ${isMyMessage ? "justify-end" : "justify-start"}`}>
 							<div
-								className={`max-w-xs px-3 py-2 rounded ${
+								className={`max-w-xs px-3 py-2 rounded group relative ${
 									isMyMessage
 										? "bg-emerald-500/20 border border-emerald-500/50 text-emerald-300"
 										: "bg-zinc-800 border border-zinc-700 text-zinc-300"
@@ -343,6 +353,18 @@ export const GhostChat = ({ user }: { user: any }) => {
 									</span>
 								)}
 								<span className="break-words text-sm">{msg.text}</span>
+								
+								{/* Eye icon for received messages */}
+								{!isMyMessage && (
+									<button
+										type="button"
+										onClick={() => handleBurnMessage(msg.timestamp)}
+										className="absolute -right-6 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-zinc-500 hover:text-emerald-400"
+										title="Mark as read (burn message)"
+									>
+										<Eye size={14} />
+									</button>
+								)}
 							</div>
 						</div>
 					);
