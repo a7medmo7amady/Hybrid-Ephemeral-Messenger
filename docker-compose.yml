@@ -1,0 +1,65 @@
+services:
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - ghost-net
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    networks:
+      - ghost-net
+
+  server:
+    build: ./server
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/ghost-messenger
+      - REDIS_URL=redis://redis:6379
+      - PORT=5000
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./server/serviceAccountKey.json:/app/serviceAccountKey.json
+    env_file:
+      - .env
+    networks:
+      - ghost-net
+
+  client:
+    build:
+      context: ./client
+      args:
+        - NEXT_PUBLIC_FIREBASE_API_KEY=${NEXT_PUBLIC_FIREBASE_API_KEY}
+        - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
+        - NEXT_PUBLIC_FIREBASE_PROJECT_ID=${NEXT_PUBLIC_FIREBASE_PROJECT_ID}
+        - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
+        - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
+        - NEXT_PUBLIC_FIREBASE_APP_ID=${NEXT_PUBLIC_FIREBASE_APP_ID}
+        - NEXT_PUBLIC_SERVER_URL=${NEXT_PUBLIC_SERVER_URL}
+        - NEXT_PUBLIC_CRYPTO_SECRET=${NEXT_PUBLIC_CRYPTO_SECRET}
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NEXT_PUBLIC_SERVER_URL=http://localhost:5000
+    depends_on:
+      - server
+    env_file:
+      - .env
+    networks:
+      - ghost-net
+
+networks:
+  ghost-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
